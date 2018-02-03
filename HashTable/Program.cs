@@ -39,7 +39,7 @@ namespace HashTable
             delHs.Stop();
 
             hs = null;
-            GC.Collect(2);
+
             var dic = new Dictionary<string, int>();
 
             var addDic = new Stopwatch();
