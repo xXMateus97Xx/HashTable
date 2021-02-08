@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HashTable
 {
@@ -12,7 +9,6 @@ namespace HashTable
         private const int MAX_BUCKET_LENGTH = 5;
 
         private HashTableNode<TKey, TValue>[][] _values;
-        private int[] _stackPointers;
         private int _capacity;
         private int _length;
 
@@ -24,10 +20,9 @@ namespace HashTable
         {
             _capacity = initialCapacity;
             _values = new HashTableNode<TKey, TValue>[initialCapacity][];
-            _stackPointers = new int[initialCapacity];
         }
 
-        public int Length { get { return _length; } }
+        public int Length => _length;
 
         public void Add(TKey key, TValue value)
         {
@@ -42,26 +37,34 @@ namespace HashTable
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
 
-            int hash;
-            int position;
-            var list = GetBucket(key, out hash, true);
-            var node = GetNode(key, out position, list);
-            if (node != null)
+            var list = GetSetBucket(key);
+            ref var node = ref GetNode(key, out _, list);
+            if (node.Initialized)
             {
                 if (add)
-                    throw new ArgumentException();
-                list[position].Value = value;
+                    throw new ArgumentException($"Key already exists {key}");
+                node.Value = value;
             }
             else
             {
-                while (_stackPointers[hash] == MAX_BUCKET_LENGTH)
+                ref var lastNode = ref list[MAX_BUCKET_LENGTH - 1];
+                while (lastNode.Initialized)
                 {
                     ReHash(_capacity * 2);
-                    list = GetBucket(key, out hash, true);
+                    list = GetSetBucket(key);
+                    lastNode = ref list[MAX_BUCKET_LENGTH - 1];
                 }
-                position = _stackPointers[hash];
+
+                int position;
+                for (position = 0; position < list.Length; position++)
+                {
+                    ref var n = ref list[position];
+                    if (!n.Initialized)
+                        break;
+                }
+
                 list[position] = new HashTableNode<TKey, TValue>(key, value);
-                _stackPointers[hash]++;
+
                 _length++;
             }
         }
@@ -69,44 +72,46 @@ namespace HashTable
         private void ReHash(int newCapacity)
         {
             var newValues = new HashTableNode<TKey, TValue>[newCapacity][];
-            var newPointers = new int[newCapacity];
 
-            var bucketIndex = -1;
             foreach (var bucket in _values)
             {
-                bucketIndex++;
                 if (bucket == null)
                     continue;
 
-                var oldStackPointer = _stackPointers[bucketIndex];
                 var index = 0;
-                foreach (var item in bucket)
+                for(var i = 0; i < bucket.Length; i++)
                 {
-                    if (index >= oldStackPointer)
+                    ref var item = ref bucket[i];
+                    if (!item.Initialized)
                         break;
 
                     var hash = Math.Abs(item.Key.GetHashCode() % newCapacity);
-                    if (newValues[hash] == null)
-                        newValues[hash] = new HashTableNode<TKey, TValue>[MAX_BUCKET_LENGTH];
+                    HashTableNode<TKey, TValue>[] list = newValues[hash];
+                    if (list == null)
+                        list = newValues[hash] = new HashTableNode<TKey, TValue>[MAX_BUCKET_LENGTH];
 
-                    var list = newValues[hash];
-                    var stackPointer = newPointers[hash];
-                    if (stackPointer == MAX_BUCKET_LENGTH)
+                    ref var lastNode = ref list[MAX_BUCKET_LENGTH -1];
+                    if (lastNode.Initialized)
                     {
                         ReHash(newCapacity * 2);
                         return;
                     }
                     else
                     {
-                        newPointers[hash]++;
-                        list[stackPointer] = item;
+                        int position;
+                        for (position = 0; position < list.Length; position++)
+                        {
+                            ref var n = ref list[position];
+                            if (!n.Initialized)
+                                break;
+                        }
+                        list[position] = item;
                     }
                     index++;
                 }
             }
 
             _values = newValues;
-            _stackPointers = newPointers;
             _capacity = newCapacity;
         }
 
@@ -115,9 +120,8 @@ namespace HashTable
             if (key == null)
                 throw new ArgumentNullException(nameof(key));
 
-            int position;
-            var value = GetNode(key, out position);
-            if (value == null)
+            ref var value = ref GetNode(key, out _);
+            if (!value.Initialized)
                 return default(TValue);
             return value.Value;
         }
@@ -134,17 +138,21 @@ namespace HashTable
             if (list == null)
                 return false;
 
-            var value = GetNode(key, out position, list);
-            if (value == null)
+            ref var value = ref GetNode(key, out position, list);
+            if (!value.Initialized)
                 return false;
 
-            var lastValue = _stackPointers[hash];
-            for (int i = position + 1; i <= lastValue; i++)
+            list[position] = HashTableNode<TKey, TValue>.Default;
+
+            int i;
+            for (i = position + 1; i < list.Length; i++)
+            {
+                if (!list[i].Initialized)
+                    break;
                 list[i - 1] = list[i];
+                list[i] = HashTableNode<TKey, TValue>.Default;
+            }
 
-            list[lastValue] = null;
-
-            _stackPointers[hash]--;
             _length--;
             return true;
         }
@@ -152,15 +160,13 @@ namespace HashTable
         public void Clear()
         {
             _values = new HashTableNode<TKey, TValue>[_capacity][];
-            _stackPointers = new int[_capacity];
             _length = 0;
         }
 
         public bool ContainsKey(TKey key)
         {
-            int position;
-            var node = GetNode(key, out position);
-            return node != null;
+            ref var node = ref GetNode(key, out _);
+            return node.Initialized;
         }
 
         public TValue this[TKey key]
@@ -175,34 +181,44 @@ namespace HashTable
             }
         }
 
-        private HashTableNode<TKey, TValue> GetNode(TKey key, out int position, HashTableNode<TKey, TValue>[] possibleValues = null)
+        private ref HashTableNode<TKey, TValue> GetNode(TKey key, out int position, HashTableNode<TKey, TValue>[] possibleValues)
         {
-            int hash;
-            if (possibleValues == null)
-                possibleValues = GetBucket(key, out hash);
-
             position = -1;
             if (possibleValues == null)
-                return null;
+                return ref HashTableNode<TKey, TValue>.Default;
 
-            for (int i = 0; i < possibleValues.Length && possibleValues[i] != null; i++)
+            for (int i = 0; i < possibleValues.Length; i++)
             {
-                var value = possibleValues[i];
+                ref var value = ref possibleValues[i];
+                if (!value.Initialized)
+                    break;
+
                 if (value.Key.Equals(key))
                 {
                     position = i;
-                    return value;
+                    return ref value;
                 }
             }
 
-            return null;
+            return ref HashTableNode<TKey, TValue>.Default;
+        }
+        
+        private ref HashTableNode<TKey, TValue> GetNode(TKey key, out int position)
+        {
+            var list = GetBucket(key, out _);
+            return ref GetNode(key, out position, list);
         }
 
-        private HashTableNode<TKey, TValue>[] GetBucket(TKey key, out int hash, bool create = false)
+        private HashTableNode<TKey, TValue>[] GetBucket(TKey key, out int hash)
         {
             hash = Math.Abs(key.GetHashCode() % _capacity);
-            var list = _values[hash];
-            if (list == null && create)
+            return _values[hash];
+        }
+
+        private HashTableNode<TKey, TValue>[] GetSetBucket(TKey key)
+        {
+            var list = GetBucket(key, out var hash);
+            if (list == null)
                 list = _values[hash] = new HashTableNode<TKey, TValue>[MAX_BUCKET_LENGTH];
             return list;
         }
@@ -214,7 +230,7 @@ namespace HashTable
                 if (list == null) continue;
                 foreach (var item in list)
                 {
-                    if (item == null) continue;
+                    if (!item.Initialized) break;
                     yield return new KeyValuePair<TKey, TValue>(item.Key, item.Value);
                 }
             }

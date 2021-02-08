@@ -17,13 +17,13 @@ namespace HashTable
 
         private static void BenchmarkTest()
         {
-            var halfMaxValue = int.MaxValue / 10752;
+            var limit = int.MaxValue / 10752;
 
             var hs = new HashTable<string, int>();
 
             var addHs = new Stopwatch();
             addHs.Start();
-            for (int i = 0; i < halfMaxValue; i++)
+            for (int i = 0; i < limit; i++)
                 hs.Add(i.ToString(), i);
             addHs.Stop();
 
@@ -44,7 +44,7 @@ namespace HashTable
 
             var addDic = new Stopwatch();
             addDic.Start();
-            for (int i = 0; i < halfMaxValue; i++)
+            for (int i = 0; i < limit; i++)
                 dic.Add(i.ToString(), i);
             addDic.Stop();
 
@@ -65,7 +65,7 @@ namespace HashTable
 
             var addCsHs = new Stopwatch();
             addCsHs.Start();
-            for (int i = 0; i < halfMaxValue; i++)
+            for (int i = 0; i < limit; i++)
                 csHs.Add(i, i);
             addCsHs.Stop();
 

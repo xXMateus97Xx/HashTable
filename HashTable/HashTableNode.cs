@@ -1,20 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace HashTable
+﻿namespace HashTable
 {
-    internal class HashTableNode<TKey, TValue>
+    internal struct HashTableNode<TKey, TValue>
     {
+        public static HashTableNode<TKey, TValue> Default = new HashTableNode<TKey, TValue>();
+        
         public HashTableNode(TKey key, TValue value)
         {
             Key = key;
             Value = value;
+            Initialized = true;
         }
 
-        public TKey Key { get; set; }
-        public TValue Value { get; set; }
+        public readonly TKey Key;
+        public TValue Value;
+        public readonly bool Initialized;
     }
 }
